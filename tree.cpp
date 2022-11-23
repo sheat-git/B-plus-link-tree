@@ -21,7 +21,6 @@ void Tree::insert(Key key, Value *value) {
         // newRootの準備をする
         Node *newRoot = new Node(false);
         Node *right = oldRoot->genSplittedRight();
-        right->parent = newRoot;
         newRoot->size = 1;
         if (oldRoot->isLeaf) {
             newRoot->keys[0] = oldRoot->keys[MIN_DEG];
@@ -47,14 +46,14 @@ void Tree::insert(Key key, Value *value) {
             oldRoot->size = MIN_DEG-1;
         }
         oldRoot->highKey = newRoot->keys[0];
-        oldRoot->parent = newRoot;
         oldRoot->next = right;
         // root交代
         root = newRoot;
         oldRoot->unlatch();
 
-    } else if (!root->insert(key, value)) { // insertが稀に失敗する。そのときは再実行
-        insert(key, value);
+    } else {
+        std::stack<Node*> parents;
+        if (!root->insert(key, value, parents)) insert(key, value);
     }
 }
 
@@ -70,7 +69,6 @@ Node::Node(bool isLeaf): isLeaf(isLeaf) {
     info = 0;
     size = 0;
     keys = new Key[MAX_DEG];
-    parent = nullptr;
     next = nullptr;
     if (isLeaf) {
         values = new Value *[MAX_DEG];
@@ -123,25 +121,27 @@ Node *Node::genSplittedRight() {
 
     // その他のコピー
     right->highKey = highKey;
-    right->parent = parent;
     right->next = next;
 
     return right;
 }
 
-bool Node::insert(Key key, Value *value) {
+bool Node::insert(Key key, Value *value, std::stack<Node*> parents) {
+
+    unsigned oldInfo = turnOffLSB(info);
+
+    // 親でsplitしているべきなので戻る
+    if (size == MAX_DEG) {
+        if (parents.empty()) return false;
+        Node *parent = parents.top();
+        parents.pop();
+        return parent->insert(key, value, parents);
+    }
 
     if (isLeaf) {
 
         // 書き込み開始
-        latch();
-
-        // これ以上書き込めない場合は親ノードに戻る
-        if (size == MAX_DEG) {
-            unlatch();
-            if (parent == nullptr) return false;
-            return parent->insert(key, value);
-        }
+        if (!attemptLatch(oldInfo)) return insert(key, value, parents);
 
         // keyより大きいものを1つ右へ
         int i = size - 1;
@@ -154,7 +154,7 @@ bool Node::insert(Key key, Value *value) {
         // nextがnullptrのときは最も右のノードであり、highKeyが初期化されていないためチェック
         if (i == size-1 && next != nullptr && highKey <= key) {
             unlatch();
-            return next->insert(key, value);
+            return next->insert(key, value, parents);
         }
         i++;
 
@@ -171,7 +171,6 @@ bool Node::insert(Key key, Value *value) {
 
         // keyが満たすインデックスを探す
         int i = 0;
-        unsigned oldInfo = turnOffLSB(info);
         while (i < size && key < keys[i]) {
             i++;
         }
@@ -179,10 +178,11 @@ bool Node::insert(Key key, Value *value) {
         // 最後まで来た時かつhighKey以上の時はnextのNodeでinsert
         // nextがnullptrのときは最も右のノードであり、highKeyが初期化されていないためチェック
         if (i >= size && next != nullptr && highKey <= key) {
-            return next->insert(key, value);
+            return next->insert(key, value, parents);
         }
         i--;
 
+        // keyが満たすchild
         Node *child = children[i];
         unsigned childOldInfo = turnOffLSB(child->info);
 
@@ -192,10 +192,10 @@ bool Node::insert(Key key, Value *value) {
             Node *newChild = child->genSplittedRight();
 
             // 自身とchildをlatch。失敗したら再実行
-            if (!child->attemptLatch(childOldInfo)) return insert(key, value);
+            if (!child->attemptLatch(childOldInfo)) return insert(key, value, parents);
             if (!attemptLatch(oldInfo)) {
                 child->unlatch();
-                return insert(key, value);
+                return insert(key, value, parents);
             }
 
             // childの更新
@@ -223,12 +223,21 @@ bool Node::insert(Key key, Value *value) {
             // 書き込み終了
             unlatch();
 
-            return child->insert(key, value);
-        
+            // 子へ
+            parents.push(this);
+            return child->insert(key, value, parents);
+
         } else if (info == oldInfo) {
-            return child->insert(key, value);
+
+            // 子へ
+            parents.push(this);
+            return child->insert(key, value, parents);
+
         } else {
-            return insert(key, value);
+
+            // infoが更新されていたら再実行
+            return insert(key, value, parents);
+
         }
     }
 }

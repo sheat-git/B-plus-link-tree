@@ -1,4 +1,5 @@
 #include <atomic>
+#include <stack>
 #include "key.hpp"
 #include "value.hpp"
 
@@ -20,7 +21,6 @@ private:
     unsigned size;
     Key *keys;
     Key highKey;
-    Node *parent;
     Node *next;
     const bool isLeaf;
     union {
@@ -37,7 +37,7 @@ private:
     Node *genSplittedRight();
 public:
     Node(bool isLeaf);
-    bool insert(Key key, Value *value);
+    bool insert(Key key, Value *value, std::stack<Node*> parents);
     Value *search(Key key);
     void traverse(bool showKeys);
     bool check();
