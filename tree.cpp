@@ -126,16 +126,25 @@ Node *Node::genSplittedRight() {
     return right;
 }
 
-bool Node::insert(Key key, Value *value, std::stack<Node*> parents) {
+bool Node::insert(Key key, Value *value, std::stack<Node*>& parents) {
 
     unsigned oldInfo = turnOffLSB(info);
 
+    // highKey以上の時はnextへ
+    if (next != nullptr && highKey <= key) {
+        if (info == oldInfo) return next->insert(key, value, parents);
+        return insert(key, value, parents);
+    }
+
     // 親でsplitしているべきなので戻る
     if (size == MAX_DEG) {
-        if (parents.empty()) return false;
-        Node *parent = parents.top();
-        parents.pop();
-        return parent->insert(key, value, parents);
+        if (info == oldInfo) {
+            if (parents.empty()) return false;
+            Node *parent = parents.top();
+            parents.pop();
+            return parent->insert(key, value, parents);
+        }
+        return insert(key, value, parents);
     }
 
     if (isLeaf) {
@@ -149,12 +158,6 @@ bool Node::insert(Key key, Value *value, std::stack<Node*> parents) {
             keys[i+1] = keys[i];
             values[i+1] = values[i];
             i--;
-        }
-        // 最後まで来た時かつhighKey以上の時はnextのNodeでinsert
-        // nextがnullptrのときは最も右のノードであり、highKeyが初期化されていないためチェック
-        if (i == size-1 && next != nullptr && highKey <= key) {
-            unlatch();
-            return next->insert(key, value, parents);
         }
         i++;
 
@@ -192,9 +195,9 @@ bool Node::insert(Key key, Value *value, std::stack<Node*> parents) {
             Node *newChild = child->genSplittedRight();
 
             // 自身とchildをlatch。失敗したら再実行
-            if (!child->attemptLatch(childOldInfo)) return insert(key, value, parents);
-            if (!attemptLatch(oldInfo)) {
-                child->unlatch();
+            if (!attemptLatch(oldInfo)) return insert(key, value, parents);
+            if (!child->attemptLatch(childOldInfo)) {
+                unlatch();
                 return insert(key, value, parents);
             }
 

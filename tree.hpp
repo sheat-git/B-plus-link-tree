@@ -37,7 +37,7 @@ private:
     Node *genSplittedRight();
 public:
     Node(bool isLeaf);
-    bool insert(Key key, Value *value, std::stack<Node*> parents);
+    bool insert(Key key, Value *value, std::stack<Node*>& parents);
     Value *search(Key key);
     void traverse(bool showKeys);
     bool check();
