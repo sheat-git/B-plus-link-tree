@@ -24,8 +24,7 @@ void Tree::insert(Key key, Value *value) {
     Node *oldRoot;
     unsigned oldInfo;
 
-    Node *newRoot;
-    Node *right;
+    Node *newRoot, *right;
 
     std::stack<Node*> parents;
 
@@ -102,14 +101,14 @@ Node::Node(bool isLeaf): isLeaf(isLeaf) {
 }
 
 bool Node::attemptLatch(unsigned expected) {
-    return !info.compare_exchange_strong(expected, turnOnLSB(expected));
+    return info.compare_exchange_strong(expected, turnOnLSB(expected));
 }
 
 void Node::latch() {
     unsigned expected;
     do {
         expected = turnOffLSB(info);
-    } while (attemptLatch(expected));
+    } while (!attemptLatch(expected));
 }
 
 void Node::unlatch() {
@@ -148,9 +147,8 @@ bool Node::insert(Key key, Value *value, std::stack<Node*>& parents) {
 
     int keyI;
 
-    Node *child;
-    unsigned childOldInfo;
-    Node *newChild;
+    Node *node1, *node2;
+    unsigned oldInfo1;
 
     while (true) {
 
@@ -166,9 +164,9 @@ bool Node::insert(Key key, Value *value, std::stack<Node*>& parents) {
         if (size == MAX_DEG) {
             if (info != oldInfo) continue;
             if (parents.empty()) return false;
-            Node *parent = parents.top();
+            node1 = parents.top();
             parents.pop();
-            return parent->insert(key, value, parents);
+            return node1->insert(key, value, parents);
         }
 
         if (isLeaf) {
@@ -206,55 +204,55 @@ bool Node::insert(Key key, Value *value, std::stack<Node*>& parents) {
             keyI++;
 
             // keyが満たすchild
-            child = children[keyI];
-            childOldInfo = turnOffLSB(child->info);
+            node1 = children[keyI];
+            oldInfo1 = turnOffLSB(node1->info);
 
-            if (child->size == MAX_DEG) {
+            if (node1->size == MAX_DEG) {
 
                 // newChildを準備
-                newChild = child->genSplittedRight();
+                node2 = node1->genSplittedRight();
 
                 // 自身とchildをlatch。失敗したら再実行
                 if (!attemptLatch(oldInfo)) continue;
-                if (!child->attemptLatch(childOldInfo)) {
+                if (!node1->attemptLatch(oldInfo1)) {
                     unlatch();
                     continue;
                 }
 
                 // childの更新
-                if (child->isLeaf) {
-                    child->size = MIN_DEG;
-                    child->highKey = child->keys[MIN_DEG];
+                if (node1->isLeaf) {
+                    node1->size = MIN_DEG;
+                    node1->highKey = node1->keys[MIN_DEG];
                 } else {
-                    child->size = MIN_DEG-1;
-                    child->highKey = child->keys[MIN_DEG-1];
+                    node1->size = MIN_DEG-1;
+                    node1->highKey = node1->keys[MIN_DEG-1];
                 }
-                child->next = newChild;
+                node1->next = node2;
 
                 // childの書き込み終了
-                child->unlatch();
+                node1->unlatch();
 
                 // 自身の更新
-                for (int i = size; i >= keyI+1; i--) {
+                size++;
+                for (int i = size-1; i >= keyI+1; i--) {
                     keys[i] = keys[i-1];
                     children[i+1] = children[i];
                 }
-                keys[keyI] = child->highKey;
-                children[keyI+1] = newChild;
-                size++;
+                keys[keyI] = node1->highKey;
+                children[keyI+1] = node2;
 
                 // 書き込み終了
                 unlatch();
 
                 // 子へ
                 parents.push(this);
-                return child->insert(key, value, parents);
+                return node1->insert(key, value, parents);
 
-            } else if (info == oldInfo && child->info == childOldInfo) {
+            } else if (info == oldInfo && node1->info == oldInfo1) {
 
                 // 子へ
                 parents.push(this);
-                return child->insert(key, value, parents);
+                return node1->insert(key, value, parents);
 
             }
         }
@@ -289,7 +287,7 @@ Value *Node::search(Key key) {
 void Node::traverse(bool showKeys) {
     if (isLeaf) {
         for (int i=0; i<size; i++) {
-            if (next == nullptr && i==size-1) {
+            if (i==size-1) {
                 showKeys ? std::cout << keys[i] << "\n" : std::cout << values[i] << "\n";
             } else {
                 showKeys ? std::cout << keys[i] << " " : std::cout << values[i] << " ";
@@ -306,7 +304,7 @@ bool Node::check() {
     if (!isLeaf) {
         // 再帰的に
         for (int i=0; i<size+1; i++) {
-            if (!children[i]) return false;
+            if (!children[i]->check()) return false;
         }
         // nextが正しいか
         for (int i=0; i<size; i++) {
