@@ -4,6 +4,14 @@
 #define MIN_DEG 3
 #define MAX_DEG 2*MIN_DEG-1
 
+unsigned turnOnLSB(unsigned info) {
+    return info | 1;
+}
+
+unsigned turnOffLSB(unsigned info) {
+    return info & ~1;
+}
+
 Tree::Tree() {
     root = new Node(true);
 }
@@ -13,52 +21,68 @@ void Tree::traverse(bool showKeys) {
 }
 
 void Tree::insert(Key key, Value *value) {
-    Node *oldRoot = root;
-    unsigned oldInfo = turnOffLSB(oldRoot->info);
+    Node *oldRoot;
+    unsigned oldInfo;
 
-    if (oldRoot->size == MAX_DEG) { // rootがいっぱいなので深くすることを試みる
-        
-        // newRootの準備をする
-        Node *newRoot = new Node(false);
-        Node *right = oldRoot->genSplittedRight();
-        newRoot->size = 1;
-        if (oldRoot->isLeaf) {
-            newRoot->keys[0] = oldRoot->keys[MIN_DEG];
-        } else {
-            newRoot->keys[0] = oldRoot->keys[MIN_DEG-1];
-        }
-        newRoot->children[0] = oldRoot;
-        newRoot->children[1] = right;
+    Node *newRoot;
+    Node *right;
 
-        // すでに試みられている場合、再実行
-        if (!oldRoot->attemptLatch(oldInfo)) insert(key, value);
-        // rootがすでに新しいNodeで更新されていた場合、再実行
-        if (root != oldRoot) {
+    std::stack<Node*> parents;
+
+    while (true) {
+
+        oldRoot = root;
+        oldInfo = turnOffLSB(oldRoot->info);
+
+        if (oldRoot->size == MAX_DEG) { // rootがいっぱいなので深くすることを試みる
+
+            // newRootの準備をする
+            newRoot = new Node(false);
+            right = oldRoot->genSplittedRight();
+            newRoot->size = 1;
+            if (oldRoot->isLeaf) {
+                newRoot->keys[0] = oldRoot->keys[MIN_DEG];
+            } else {
+                newRoot->keys[0] = oldRoot->keys[MIN_DEG-1];
+            }
+            newRoot->children[0] = oldRoot;
+            newRoot->children[1] = right;
+
+            // すでに試みられている場合、再実行
+            if (!oldRoot->attemptLatch(oldInfo)) {
+                insert(key, value);
+                continue;
+            }
+            // rootがすでに新しいNodeで更新されていた場合、再実行
+            if (root != oldRoot) {
+                oldRoot->unlatch();
+                insert(key, value);
+                continue;
+            }
+
+            // 更新開始
+            // oldRootの値を更新する
+            if (oldRoot->isLeaf) {
+                oldRoot->size = MIN_DEG;
+            } else {
+                oldRoot->size = MIN_DEG-1;
+            }
+            oldRoot->highKey = newRoot->keys[0];
+            oldRoot->next = right;
+            // root交代
+            root = newRoot;
             oldRoot->unlatch();
-            insert(key, value);
-        }
 
-        // 更新開始
-        // oldRootの値を更新する
-        if (oldRoot->isLeaf) {
-            oldRoot->size = MIN_DEG;
-        } else {
-            oldRoot->size = MIN_DEG-1;
-        }
-        oldRoot->highKey = newRoot->keys[0];
-        oldRoot->next = right;
-        // root交代
-        root = newRoot;
-        oldRoot->unlatch();
+            break;
 
-    } else {
-        std::stack<Node*> parents;
-        if (!root->insert(key, value, parents)) insert(key, value);
+        } else if (root->insert(key, value, parents)) {
+            break;
+        }
     }
 }
 
 Value *Tree::search(Key key) {
-    root->search(key);
+    return root->search(key);
 }
 
 bool Tree::check() {
@@ -75,14 +99,6 @@ Node::Node(bool isLeaf): isLeaf(isLeaf) {
     } else {
         children = new Node *[MAX_DEG+1];
     }
-}
-
-unsigned turnOnLSB(unsigned info) {
-    return info | 1;
-}
-
-unsigned turnOffLSB(unsigned info) {
-    return info & ~1;
 }
 
 bool Node::attemptLatch(unsigned expected) {
@@ -128,119 +144,119 @@ Node *Node::genSplittedRight() {
 
 bool Node::insert(Key key, Value *value, std::stack<Node*>& parents) {
 
-    unsigned oldInfo = turnOffLSB(info);
+    unsigned oldInfo;
 
-    // highKey以上の時はnextへ
-    if (next != nullptr && highKey <= key) {
-        if (info == oldInfo) return next->insert(key, value, parents);
-        return insert(key, value, parents);
-    }
+    int keyI;
 
-    // 親でsplitしているべきなので戻る
-    if (size == MAX_DEG) {
-        if (info == oldInfo) {
+    Node *child;
+    unsigned childOldInfo;
+    Node *newChild;
+
+    while (true) {
+
+        oldInfo = turnOffLSB(info);
+
+        // highKey以上の時はnextへ
+        if (next != nullptr && highKey <= key) {
+            if (info != oldInfo) continue;
+            return next->insert(key, value, parents);
+        }
+
+        // 親でsplitしているべきなので戻る
+        if (size == MAX_DEG) {
+            if (info != oldInfo) continue;
             if (parents.empty()) return false;
             Node *parent = parents.top();
             parents.pop();
             return parent->insert(key, value, parents);
         }
-        return insert(key, value, parents);
-    }
 
-    if (isLeaf) {
+        if (isLeaf) {
 
-        // 書き込み開始
-        if (!attemptLatch(oldInfo)) return insert(key, value, parents);
+            // 書き込み開始
+            if (!attemptLatch(oldInfo)) continue;
 
-        // keyより大きいものを1つ右へ
-        int i = size - 1;
-        while (i >= 0 && key < keys[i]) {
-            keys[i+1] = keys[i];
-            values[i+1] = values[i];
-            i--;
-        }
-        i++;
-
-        // 挿入
-        keys[i] = key;
-        values[i] = value;
-        size++;
-
-        // 書き込み終了
-        unlatch();
-        return true;
-
-    } else {
-
-        // keyが満たすインデックスを探す
-        int i = 0;
-        while (i < size && key < keys[i]) {
-            i++;
-        }
-
-        // 最後まで来た時かつhighKey以上の時はnextのNodeでinsert
-        // nextがnullptrのときは最も右のノードであり、highKeyが初期化されていないためチェック
-        if (i >= size && next != nullptr && highKey <= key) {
-            return next->insert(key, value, parents);
-        }
-        i--;
-
-        // keyが満たすchild
-        Node *child = children[i];
-        unsigned childOldInfo = turnOffLSB(child->info);
-
-        if (child->size == MAX_DEG) {
-
-            // newChildを準備
-            Node *newChild = child->genSplittedRight();
-
-            // 自身とchildをlatch。失敗したら再実行
-            if (!attemptLatch(oldInfo)) return insert(key, value, parents);
-            if (!child->attemptLatch(childOldInfo)) {
-                unlatch();
-                return insert(key, value, parents);
+            // keyより大きいものを1つ右へ
+            keyI = size - 1;
+            while (keyI >= 0 && key < keys[keyI]) {
+                keys[keyI+1] = keys[keyI];
+                values[keyI+1] = values[keyI];
+                keyI--;
             }
+            keyI++;
 
-            // childの更新
-            if (child->isLeaf) {
-                child->size = MIN_DEG;
-                child->highKey = child->keys[MIN_DEG];
-            } else {
-                child->size = MIN_DEG-1;
-                child->highKey = child->keys[MIN_DEG-1];
-            }
-            child->next = newChild;
-
-            // childの書き込み終了
-            child->unlatch();
-
-            // 自身の更新
-            for (int j = size; j >= i+1; j--) {
-                keys[j] = keys[j-1];
-                children[j+1] = children[j];
-            }
-            keys[i] = child->highKey;
-            children[i+1] = newChild;
+            // 挿入
+            keys[keyI] = key;
+            values[keyI] = value;
             size++;
 
             // 書き込み終了
             unlatch();
-
-            // 子へ
-            parents.push(this);
-            return child->insert(key, value, parents);
-
-        } else if (info == oldInfo) {
-
-            // 子へ
-            parents.push(this);
-            return child->insert(key, value, parents);
+            return true;
 
         } else {
 
-            // infoが更新されていたら再実行
-            return insert(key, value, parents);
+            // keyが満たすインデックスを探す
+            keyI = size - 1;
+            // size==MAX_DEG は再実行
+            if (keyI == MAX_DEG-1) continue;
+            while (keyI >= 0 && key < keys[keyI]) {
+                keyI--;
+            }
+            keyI++;
 
+            // keyが満たすchild
+            child = children[keyI];
+            childOldInfo = turnOffLSB(child->info);
+
+            if (child->size == MAX_DEG) {
+
+                // newChildを準備
+                newChild = child->genSplittedRight();
+
+                // 自身とchildをlatch。失敗したら再実行
+                if (!attemptLatch(oldInfo)) continue;
+                if (!child->attemptLatch(childOldInfo)) {
+                    unlatch();
+                    continue;
+                }
+
+                // childの更新
+                if (child->isLeaf) {
+                    child->size = MIN_DEG;
+                    child->highKey = child->keys[MIN_DEG];
+                } else {
+                    child->size = MIN_DEG-1;
+                    child->highKey = child->keys[MIN_DEG-1];
+                }
+                child->next = newChild;
+
+                // childの書き込み終了
+                child->unlatch();
+
+                // 自身の更新
+                for (int i = size; i >= keyI+1; i--) {
+                    keys[i] = keys[i-1];
+                    children[i+1] = children[i];
+                }
+                keys[keyI] = child->highKey;
+                children[keyI+1] = newChild;
+                size++;
+
+                // 書き込み終了
+                unlatch();
+
+                // 子へ
+                parents.push(this);
+                return child->insert(key, value, parents);
+
+            } else if (info == oldInfo && child->info == childOldInfo) {
+
+                // 子へ
+                parents.push(this);
+                return child->insert(key, value, parents);
+
+            }
         }
     }
 }
@@ -274,10 +290,14 @@ void Node::traverse(bool showKeys) {
     if (isLeaf) {
         for (int i=0; i<size; i++) {
             if (next == nullptr && i==size-1) {
-                showKeys ? std::cout << keys[i] : std::cout << values[i];
+                showKeys ? std::cout << keys[i] << "\n" : std::cout << values[i] << "\n";
             } else {
-                showKeys ? std::cout << " " << keys[i] : std::cout << " " << values[i];
+                showKeys ? std::cout << keys[i] << " " : std::cout << values[i] << " ";
             }
+        }
+    } else {
+        for (int i=0; i<=size; i++) {
+            children[i]->traverse(showKeys);
         }
     }
 }

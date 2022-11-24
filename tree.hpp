@@ -3,6 +3,9 @@
 #include "key.hpp"
 #include "value.hpp"
 
+class Tree;
+class Node;
+
 class Tree {
 private:
     Node *root;
@@ -39,8 +42,8 @@ public:
     Node(bool isLeaf);
     bool insert(Key key, Value *value, std::stack<Node*>& parents);
     Value *search(Key key);
-    void traverse(bool showKeys);
+    void traverse(bool showKeys = true);
     bool check();
 
-friend Tree;
+friend class Tree;
 };
