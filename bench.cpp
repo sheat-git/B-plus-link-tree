@@ -3,6 +3,9 @@
 #include <random>
 #include <algorithm>
 #include <iostream>
+#include <chrono>
+#include <stdlib.h>
+#include <stdio.h>
 #include "tree.hpp"
 
 void insert(Tree *tree, std::vector<int>& keys) {
@@ -11,7 +14,7 @@ void insert(Tree *tree, std::vector<int>& keys) {
     }
 }
 
-bool test(int threadCount, int dataCount, bool traverse) {
+long long bench(int threadCount, int dataCount, bool traverse) {
 
     // keysは等差数列をシャッフルしたもの
     // keysのサイズ確保
@@ -38,6 +41,10 @@ bool test(int threadCount, int dataCount, bool traverse) {
     // threadsのサイズ確保
     std::vector<std::thread> threads(threadCount);
 
+    std::chrono::system_clock::time_point  start, end;
+
+    start = std::chrono::system_clock::now();
+
     // スレッドで実行
     for (int i=0; i<threadCount; i++) {
         threads[i] = std::thread(insert, tree, std::ref(keys[i]));
@@ -48,12 +55,36 @@ bool test(int threadCount, int dataCount, bool traverse) {
         t.join();
     }
 
+    end = std::chrono::system_clock::now();
+
     if (traverse) tree->traverse(true);
 
-    return tree->check();
+    if (!tree->check()) return -1;
+
+    return std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 }
 
-int main() {
-    std::cout << test(5, 100000, true) << "\n";
+int main(int argc, char *argv[]) {
+    long long times = 0, time;
+    int threadCount, dataCount;
+
+    threadCount = atoi(argv[1]);
+    dataCount = atoi(argv[2]);
+
+    if (threadCount > std::thread::hardware_concurrency()) {
+        std::cerr << "too many threads (limit:"
+            << std::thread::hardware_concurrency() << ")\n";
+        return 1;
+    }
+
+    for (int i=0; i<10; i++) {
+        time = bench(threadCount, dataCount, false);
+        if (time == -1) {
+            std::cerr << "insert fault\n";
+            return 1;
+        }
+        times += time;
+    }
+    std::cout << times / 10 << "msec\n";
     return 0;
 }
