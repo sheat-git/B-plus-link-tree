@@ -67,7 +67,7 @@ void Tree::insert(Key key, Value *value) {
             // root交代
             root = newRoot;
             oldRoot->unlatch();
-        } 
+        }
         if (root->insert(key, value, parents)) break;
     }
 }
