@@ -48,14 +48,10 @@ void Tree::insert(Key key, Value *value) {
             newRoot->children[1] = right;
 
             // すでに試みられている場合、再実行
-            if (!oldRoot->attemptLatch(oldInfo)) {
-                insert(key, value);
-                continue;
-            }
+            if (!oldRoot->attemptLatch(oldInfo)) continue;
             // rootがすでに新しいNodeで更新されていた場合、再実行
             if (root != oldRoot) {
                 oldRoot->unlatch();
-                insert(key, value);
                 continue;
             }
 
@@ -71,12 +67,8 @@ void Tree::insert(Key key, Value *value) {
             // root交代
             root = newRoot;
             oldRoot->unlatch();
-
-            break;
-
-        } else if (root->insert(key, value, parents)) {
-            break;
-        }
+        } 
+        if (root->insert(key, value, parents)) break;
     }
 }
 

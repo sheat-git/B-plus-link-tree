@@ -54,6 +54,6 @@ bool test(int threadCount, int dataCount, bool traverse) {
 }
 
 int main() {
-    std::cout << test(1, 100000, true) << "\n";
+    std::cout << test(5, 100000, true) << "\n";
     return 0;
 }
