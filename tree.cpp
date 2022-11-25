@@ -26,8 +26,6 @@ void Tree::insert(Key key, Value *value) {
 
     Node *newRoot = nullptr, *right = nullptr;
 
-    std::stack<Node*> parents;
-
     while (true) {
 
         oldRoot = root;
@@ -73,7 +71,7 @@ void Tree::insert(Key key, Value *value) {
             oldRoot->unlatch();
         }
 
-        if (root->insert(key, value, parents)) break;
+        if (root->insert(key, value, nullptr)) break;
     }
 }
 
@@ -133,7 +131,7 @@ void Node::copyFromLeft(Node *left) {
     next = left->next;
 }
 
-bool Node::insert(Key key, Value *value, std::stack<Node*>& parents) {
+bool Node::insert(Key key, Value *value, Node *parent) {
 
     unsigned oldInfo;
 
@@ -149,16 +147,14 @@ bool Node::insert(Key key, Value *value, std::stack<Node*>& parents) {
         // highKey以上の時はnextへ
         if (next != nullptr && highKey <= key) {
             if (info != oldInfo) continue;
-            return next->insert(key, value, parents);
+            return next->insert(key, value, parent);
         }
 
         // 親でsplitしているべきなので戻る
         if (size == MAX_DEG) {
             if (info != oldInfo) continue;
-            if (parents.empty()) return false;
-            node1 = parents.top();
-            parents.pop();
-            return node1->insert(key, value, parents);
+            if (parent == nullptr) return false;
+            return parent->insert(key, value, nullptr);
         }
 
         if (isLeaf) {
@@ -240,14 +236,12 @@ bool Node::insert(Key key, Value *value, std::stack<Node*>& parents) {
                 unlatch();
 
                 // 子へ
-                parents.push(this);
-                return node1->insert(key, value, parents);
+                return node1->insert(key, value, this);
 
             } else if (info == oldInfo && node1->info == oldInfo1) {
 
                 // 子へ
-                parents.push(this);
-                return node1->insert(key, value, parents);
+                return node1->insert(key, value, this);
 
             }
         }
