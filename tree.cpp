@@ -24,7 +24,7 @@ void Tree::insert(Key key, Value *value) {
     Node *oldRoot;
     unsigned oldInfo;
 
-    Node *newRoot, *right;
+    Node *newRoot = nullptr, *right = nullptr;
 
     std::stack<Node*> parents;
 
@@ -36,16 +36,20 @@ void Tree::insert(Key key, Value *value) {
         if (oldRoot->size == MAX_DEG) { // rootがいっぱいなので深くすることを試みる
 
             // newRootの準備をする
-            newRoot = new Node(false);
-            right = oldRoot->genSplittedRight();
-            newRoot->size = 1;
+            if (right == nullptr) {
+                right = new Node(oldRoot->isLeaf, MIN_DEG-1);
+            }
+            if (newRoot == nullptr) {
+                newRoot = new Node(false, 1);
+                newRoot->children[1] = right;
+            }
+            right->copyFromLeft(oldRoot);
             if (oldRoot->isLeaf) {
                 newRoot->keys[0] = oldRoot->keys[MIN_DEG];
             } else {
                 newRoot->keys[0] = oldRoot->keys[MIN_DEG-1];
             }
             newRoot->children[0] = oldRoot;
-            newRoot->children[1] = right;
 
             // すでに試みられている場合、再実行
             if (!oldRoot->attemptLatch(oldInfo)) continue;
@@ -68,6 +72,7 @@ void Tree::insert(Key key, Value *value) {
             root = newRoot;
             oldRoot->unlatch();
         }
+
         if (root->insert(key, value, parents)) break;
     }
 }
@@ -80,9 +85,9 @@ bool Tree::check() {
     return root->check();
 }
 
-Node::Node(bool isLeaf): isLeaf(isLeaf) {
+Node::Node(bool isLeaf, int size): isLeaf(isLeaf) {
     info = 0;
-    size = 0;
+    this->size = size;
     keys = new Key[MAX_DEG];
     next = nullptr;
     if (isLeaf) {
@@ -107,30 +112,25 @@ void Node::unlatch() {
     info++;
 }
 
-Node *Node::genSplittedRight() {
-    Node *right = new Node(isLeaf);
-    right->size = MIN_DEG - 1;
-
+void Node::copyFromLeft(Node *left) {
     if (isLeaf) {
         // keysとvaluesをコピー
         for (int i=0; i<MIN_DEG-1; i++) {
-            right->keys[i] = keys[MIN_DEG+i];
-            right->values[i] = values[MIN_DEG+i];
+            keys[i] = left->keys[MIN_DEG+i];
+            values[i] = left->values[MIN_DEG+i];
         }
     } else {
         // keysとchildrenをコピー
         for (int i=0; i<MIN_DEG-1; i++) {
-            right->keys[i] = keys[MIN_DEG+i];
-            right->children[i] = children[MIN_DEG+i];
+            keys[i] = left->keys[MIN_DEG+i];
+            children[i] = left->children[MIN_DEG+i];
         }
-        right->children[MIN_DEG-1] = children[MAX_DEG];
+        children[MIN_DEG-1] = left->children[MAX_DEG];
     }
 
     // その他のコピー
-    right->highKey = highKey;
-    right->next = next;
-
-    return right;
+    highKey = left->highKey;
+    next = left->next;
 }
 
 bool Node::insert(Key key, Value *value, std::stack<Node*>& parents) {
@@ -139,7 +139,7 @@ bool Node::insert(Key key, Value *value, std::stack<Node*>& parents) {
 
     int keyI;
 
-    Node *node1, *node2;
+    Node *node1, *node2 = nullptr;
     unsigned oldInfo1;
 
     while (true) {
@@ -202,7 +202,10 @@ bool Node::insert(Key key, Value *value, std::stack<Node*>& parents) {
             if (node1->size == MAX_DEG) {
 
                 // newChildを準備
-                node2 = node1->genSplittedRight();
+                if (node2 == nullptr) {
+                    node2 = new Node(node1->isLeaf, MIN_DEG-1);
+                }
+                node2->copyFromLeft(node1);
 
                 // 自身とchildをlatch。失敗したら再実行
                 if (!attemptLatch(oldInfo)) continue;

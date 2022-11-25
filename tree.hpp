@@ -20,7 +20,7 @@ public:
 
 class Node {
 private:
-    std::atomic<unsigned> info;
+    std::atomic_uint info;
     int size;
     Key *keys;
     Key highKey;
@@ -36,10 +36,10 @@ private:
     bool attemptLatch(unsigned oldInfo);
     void latch();
     void unlatch();
-    // 自身がsplitされた際の右側が生成される
-    Node *genSplittedRight();
+    // 引数の右側に分割されたものとして初期化
+    void copyFromLeft(Node *left);
 public:
-    Node(bool isLeaf);
+    Node(bool isLeaf, int size = 0);
     bool insert(Key key, Value *value, std::stack<Node*>& parents);
     Value *search(Key key);
     void traverse(bool showKeys = true);
