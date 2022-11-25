@@ -21,7 +21,7 @@ public:
 class Node {
 private:
     std::atomic<unsigned> info;
-    unsigned size;
+    int size;
     Key *keys;
     Key highKey;
     Node *next;

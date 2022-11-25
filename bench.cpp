@@ -9,7 +9,7 @@
 #include "tree.hpp"
 
 void insert(Tree *tree, std::vector<int>& keys) {
-    for (int i=0; i<keys.size(); i++) {
+    for (unsigned i=0; i<keys.size(); i++) {
         tree->insert(keys[i], nullptr);
     }
 }
@@ -71,7 +71,7 @@ int main(int argc, char *argv[]) {
     threadCount = atoi(argv[1]);
     dataCount = atoi(argv[2]);
 
-    if (threadCount > std::thread::hardware_concurrency()) {
+    if (threadCount > (int) std::thread::hardware_concurrency()) {
         std::cerr << "too many threads (limit:"
             << std::thread::hardware_concurrency() << ")\n";
         return 1;
