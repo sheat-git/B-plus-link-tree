@@ -71,6 +71,11 @@ int main(int argc, char *argv[]) {
     threadCount = atoi(argv[1]);
     dataCount = atoi(argv[2]);
 
+    if (argc != 3) {
+        std::cerr << "give threadCount and dataCount\n";
+        return 1;
+    }
+
     if (threadCount > (int) std::thread::hardware_concurrency()) {
         std::cerr << "too many threads (limit:"
             << std::thread::hardware_concurrency() << ")\n";
