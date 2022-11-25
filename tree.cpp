@@ -224,13 +224,13 @@ bool Node::insert(Key key, Value *value, Node *parent) {
                 node1->unlatch();
 
                 // 自身の更新
-                size++;
-                for (int i = size-1; i >= keyI+1; i--) {
+                for (int i = size; i >= keyI+1; i--) {
                     keys[i] = keys[i-1];
                     children[i+1] = children[i];
                 }
                 keys[keyI] = node1->highKey;
                 children[keyI+1] = node2;
+                size++;
 
                 // 書き込み終了
                 unlatch();
