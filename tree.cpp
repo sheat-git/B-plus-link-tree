@@ -115,7 +115,7 @@ void Tree::insert(Key key, Value *value) {
         rootCache->highKey = newRoot->keys[0];
         rootCache->next = right;
         root = newRoot;
-        rootCache->unlatch(rootInfoCache);
+        rootCache->unlatch();
 
         // insertに成功したら終了
         // 失敗したら再実行
@@ -157,10 +157,6 @@ void Node::latch() {
 
 void Node::unlatch() {
     info++;
-}
-
-void Node::unlatch(int cache) {
-    info = cache + 0b10;
 }
 
 void Node::copyFromLeft(Node *left) {
@@ -276,7 +272,7 @@ bool Node::insertToInternal(Key key, Value *value, std::stack<Node*>& parents) {
             childCache->highKey = childCache->keys[MIN_DEG-1];
         }
         childCache->next = newChild;
-        childCache->unlatch(childInfoCache);
+        childCache->unlatch();
 
         // 自身の更新
         for (int i = sizeCache; i >= keyI+1; i--) {
@@ -286,7 +282,7 @@ bool Node::insertToInternal(Key key, Value *value, std::stack<Node*>& parents) {
         keys[keyI] = childCache->highKey;
         children[keyI+1] = newChild;
         size = sizeCache+1;
-        unlatch(infoCache);
+        unlatch();
 
         // 子へ
         return childCache->insert(key, value, parents);
@@ -339,7 +335,7 @@ bool Node::insertToLeaf(Key key, Value *value, std::stack<Node*>& parents) {
         keys[keyI] = key;
         values[keyI] = value;
         size = sizeCache+1;
-        unlatch(infoCache);
+        unlatch();
 
         return true;
 
