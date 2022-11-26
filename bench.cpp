@@ -59,7 +59,7 @@ long long bench(int threadCount, int dataCount, bool traverse) {
 
     if (traverse) tree->traverse(true);
 
-    if (!tree->check()) return -1;
+    if (!tree->check(1)) return -1;
 
     return std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 }
@@ -83,13 +83,15 @@ int main(int argc, char *argv[]) {
     }
 
     for (int i=0; i<10; i++) {
+        std::cout << i << "... ";
         time = bench(threadCount, dataCount, false);
         if (time == -1) {
             std::cerr << "insert fault\n";
             return 1;
         }
+        std::cout << "success\n";
         times += time;
     }
-    std::cout << times / 10 << "msec\n";
+    std::cout << "Avg. " << times / 10 << "msec\n";
     return 0;
 }
