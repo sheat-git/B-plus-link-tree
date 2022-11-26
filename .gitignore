@@ -1,4 +1,3 @@
 .vscode
-test
 bench*
 !bench.cpp
