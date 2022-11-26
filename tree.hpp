@@ -35,6 +35,7 @@ private:
     bool attemptLatch(int oldInfo);
     void latch();
     void unlatch();
+    void unlatch(int cache);
     // 引数の右側に分割されたものとして値をコピー
     void copyFromLeft(Node *left);
     void copyFromLeftInternal(Node *left);
