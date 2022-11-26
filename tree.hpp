@@ -19,8 +19,8 @@ public:
 
 class Node {
 private:
-    std::atomic_uint info;
-    int size;
+    std::atomic_int info;
+    std::atomic_int size;
     Key *keys;
     Key highKey;
     Node *next;
@@ -32,13 +32,17 @@ private:
 
 private:
     // latchを1度試みる。成否が返り値
-    bool attemptLatch(unsigned oldInfo);
+    bool attemptLatch(int oldInfo);
     void latch();
     void unlatch();
-    // 引数の右側に分割されたものとして初期化
+    // 引数の右側に分割されたものとして値をコピー
     void copyFromLeft(Node *left);
+    void copyFromLeftInternal(Node *left);
+    void copyFromLeftLeaf(Node *left);
+    bool insertToInternal(Key key, Value *value, Node *parent);
+    bool insertToLeaf(Key key, Value *value, Node *parent);
 public:
-    Node(bool isLeaf, int size = 0);
+    Node(bool isLeaf, int size);
     bool insert(Key key, Value *value, Node *parent);
     Value *search(Key key);
     void traverse(bool showKeys = true);

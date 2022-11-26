@@ -1,5 +1,5 @@
 CXX := /opt/homebrew/bin/g++-12
-CXXFLAGS := -Wall -Wextra -pthread -std=c++11 -g
+CXXFLAGS := -Wall -Wextra -pthread -Ofast
 
 bench: bench.cpp tree.cpp
 

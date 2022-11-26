@@ -30,7 +30,7 @@ long long bench(int threadCount, int dataCount, bool traverse) {
         keys[i%threadCount][i/threadCount] = i;
     }
     // keysの中身をシャッフル
-    std::mt19937_64 get_rand_mt;
+    std::mt19937_64 get_rand_mt(0);
     for (int i=0; i<threadCount; i++) {
         std::shuffle( keys[i].begin(), keys[i].end(), get_rand_mt );
     }

@@ -4,16 +4,16 @@
 #define MIN_DEG 3
 #define MAX_DEG 2*MIN_DEG-1
 
-unsigned turnOnLSB(unsigned info) {
+int turnOnLSB(int info) {
     return info | 1;
 }
 
-unsigned turnOffLSB(unsigned info) {
+int turnOffLSB(int info) {
     return info & ~1;
 }
 
 Tree::Tree() {
-    root = new Node(true);
+    root = new Node(true, 0);
 }
 
 void Tree::traverse(bool showKeys) {
@@ -21,57 +21,104 @@ void Tree::traverse(bool showKeys) {
 }
 
 void Tree::insert(Key key, Value *value) {
-    Node *oldRoot;
-    unsigned oldInfo;
 
-    Node *newRoot = nullptr, *right = nullptr;
+    Node *rootCache;
+    int rootInfoCache;
+
+    // 木を深くするとき用
+    Node *newRoot = nullptr, *right;
 
     while (true) {
 
-        oldRoot = root;
-        oldInfo = turnOffLSB(oldRoot->info);
+        // cacheの初期化（更新）
+        rootCache = root;
+        rootInfoCache = turnOffLSB(rootCache->info);
 
-        if (oldRoot->size == MAX_DEG) { // rootがいっぱいなので深くすることを試みる
+        // root->sizeがいっぱいなら次で木を深くする
+        if (rootCache->size != MAX_DEG) {
 
-            // newRootの準備をする
-            if (right == nullptr) {
-                right = new Node(oldRoot->isLeaf, MIN_DEG-1);
+            // rootが更新されていたらcacheも更新して再実行
+            if (root != rootCache) {
+                rootCache = root;
+                rootInfoCache = turnOffLSB(rootCache->info);
+                continue;
             }
-            if (newRoot == nullptr) {
-                newRoot = new Node(false, 1);
-                newRoot->children[1] = right;
-            }
-            right->copyFromLeft(oldRoot);
-            if (oldRoot->isLeaf) {
-                newRoot->keys[0] = oldRoot->keys[MIN_DEG];
-            } else {
-                newRoot->keys[0] = oldRoot->keys[MIN_DEG-1];
-            }
-            newRoot->children[0] = oldRoot;
-
-            // すでに試みられている場合、再実行
-            if (!oldRoot->attemptLatch(oldInfo)) continue;
-            // rootがすでに新しいNodeで更新されていた場合、再実行
-            if (root != oldRoot) {
-                oldRoot->unlatch();
+            if (rootCache->info != rootInfoCache) {
+                rootInfoCache = turnOffLSB(rootCache->info);
                 continue;
             }
 
-            // 更新開始
-            // oldRootの値を更新する
-            if (oldRoot->isLeaf) {
-                oldRoot->size = MIN_DEG;
-            } else {
-                oldRoot->size = MIN_DEG-1;
-            }
-            oldRoot->highKey = newRoot->keys[0];
-            oldRoot->next = right;
-            // root交代
-            root = newRoot;
-            oldRoot->unlatch();
+            // insertに成功したら終了
+            if (root->insert(key, value, nullptr)) return;
+            // 失敗したら再実行
+            else continue;
         }
 
-        if (root->insert(key, value, nullptr)) break;
+        // ループの最初のみ
+        if (newRoot == nullptr) {
+
+            // newRootとrightを作成
+            newRoot = new Node(false, 1);
+            if (rootCache->isLeaf) {
+                newRoot->keys[0] = rootCache->keys[MIN_DEG];
+                right = new Node(true, MIN_DEG-1);
+                right->copyFromLeftLeaf(rootCache);
+            } else {
+                newRoot->keys[0] = rootCache->keys[MIN_DEG-1];
+                right = new Node(false, MIN_DEG-1);
+                right->copyFromLeftInternal(rootCache);
+            }
+            newRoot->children[0] = rootCache;
+            newRoot->children[1] = right;
+
+        }
+        // 2回目以降
+        else {
+
+            // newRootを更新
+            newRoot->children[0] = rootCache;
+
+            // rightを更新
+            if (rootCache->isLeaf) {
+                if (!right->isLeaf) {
+                    right = new Node(true, MIN_DEG-1);
+                    newRoot->children[1] = right;
+                }
+                right->copyFromLeftLeaf(rootCache);
+            } else {
+                if (right->isLeaf) {
+                    right = new Node(false, MIN_DEG-1);
+                    newRoot->children[1] = right;
+                }
+                right->copyFromLeftInternal(rootCache);
+            }
+
+        }
+
+        // すでに試みられていたら再実行
+        if (!rootCache->attemptLatch(rootInfoCache)) continue;
+
+        // rootがすでに新しいNodeで更新されていたら次へ
+        if (root != rootCache) {
+            rootCache->unlatch();
+            continue;
+        }
+
+        // rootの値を更新する
+        if (rootCache->isLeaf) {
+            rootCache->size = MIN_DEG;
+        } else {
+            rootCache->size = MIN_DEG-1;
+        }
+        rootCache->highKey = newRoot->keys[0];
+        rootCache->next = right;
+        root = newRoot;
+        rootCache->unlatch();
+
+        // insertに成功したら終了
+        // 失敗したら再実行
+        if (root->insert(key, value, nullptr)) return;
+
     }
 }
 
@@ -95,12 +142,12 @@ Node::Node(bool isLeaf, int size): isLeaf(isLeaf) {
     }
 }
 
-bool Node::attemptLatch(unsigned expected) {
-    return info.compare_exchange_strong(expected, turnOnLSB(expected));
+bool Node::attemptLatch(int expected) {
+    return info.compare_exchange_weak(expected, turnOnLSB(expected));
 }
 
 void Node::latch() {
-    unsigned expected;
+    int expected;
     do {
         expected = turnOffLSB(info);
     } while (!attemptLatch(expected));
@@ -111,148 +158,191 @@ void Node::unlatch() {
 }
 
 void Node::copyFromLeft(Node *left) {
-    if (isLeaf) {
-        // keysとvaluesをコピー
-        for (int i=0; i<MIN_DEG-1; i++) {
-            keys[i] = left->keys[MIN_DEG+i];
-            values[i] = left->values[MIN_DEG+i];
-        }
-    } else {
-        // keysとchildrenをコピー
-        for (int i=0; i<MIN_DEG-1; i++) {
-            keys[i] = left->keys[MIN_DEG+i];
-            children[i] = left->children[MIN_DEG+i];
-        }
-        children[MIN_DEG-1] = left->children[MAX_DEG];
-    }
+    if (isLeaf) copyFromLeftLeaf(left);
+    else copyFromLeftInternal(left);
+}
 
-    // その他のコピー
+void Node::copyFromLeftInternal(Node *left) {
+    // keysとchildrenをコピー
+    for (int i=0; i<MIN_DEG-1; i++) {
+        keys[i] = left->keys[MIN_DEG+i];
+        children[i] = left->children[MIN_DEG+i];
+    }
+    children[MIN_DEG-1] = left->children[MAX_DEG];
+    // その他をコピー
     highKey = left->highKey;
     next = left->next;
 }
 
-bool Node::insert(Key key, Value *value, Node *parent) {
+void Node::copyFromLeftLeaf(Node *left) {
+    // keysとvaluesをコピー
+    for (int i=0; i<MIN_DEG-1; i++) {
+        keys[i] = left->keys[MIN_DEG+i];
+        values[i] = left->values[MIN_DEG+i];
+    }
+    // その他をコピー
+    highKey = left->highKey;
+    next = left->next;
+}
 
-    unsigned oldInfo;
+bool Node::insertToInternal(Key key, Value *value, Node *parent) {
 
-    int keyI;
+    int infoCache;
+    int sizeCache, keyI;
 
-    Node *node1, *node2 = nullptr;
-    unsigned oldInfo1;
+    Node *childCache, *newChild = nullptr;
+    int childInfoCache;
 
     while (true) {
 
-        oldInfo = turnOffLSB(info);
+        // infoCache初期化（更新）
+        infoCache = turnOffLSB(info);
 
-        // highKey以上の時はnextへ
+        // highKey以上はnextへ
         if (next != nullptr && highKey <= key) {
-            if (info != oldInfo) continue;
-            return next->insert(key, value, parent);
+            if (info != infoCache) continue;
+            return next->insertToInternal(key, value, parent);
         }
 
-        // 親でsplitしているべきなので戻る
-        if (size == MAX_DEG) {
-            if (info != oldInfo) continue;
+        // sizeCache初期化（更新）
+        sizeCache = size;
+
+        // すでに分割されているべきなのでparentへ
+        if (sizeCache == MAX_DEG) {
+            if (info != infoCache) continue;
             if (parent == nullptr) return false;
-            return parent->insert(key, value, nullptr);
+            return parent->insertToInternal(key, value, nullptr);
         }
 
-        if (isLeaf) {
+        // keyを満たすインデックスkeyIを探す
+        for (keyI=0; keyI<sizeCache; keyI++) {
+            if (key < keys[keyI]) break;
+        }
 
-            // 書き込み開始
-            if (!attemptLatch(oldInfo)) continue;
+        // keyを満たすchild
+        childCache = children[keyI];
+        childInfoCache = turnOffLSB(childCache->info);
 
-            // keyより大きいものを1つ右へ
-            keyI = size - 1;
-            while (keyI >= 0 && key < keys[keyI]) {
-                keys[keyI+1] = keys[keyI];
-                values[keyI+1] = values[keyI];
-                keyI--;
+        // child->sizeがいっぱいなら次でchildを分割
+        if (childCache->size != MAX_DEG) {
+            if (info != infoCache || childCache->info != childInfoCache) continue;
+            return childCache->insert(key, value, this);
+        }
+
+        // ループの最初のみ
+        if (newChild == nullptr) {
+
+            // newChildを作成
+            if (childCache->isLeaf) {
+                newChild = new Node(true, MIN_DEG-1);
+                newChild->copyFromLeftLeaf(childCache);
+            } else {
+                newChild = new Node(false, MIN_DEG-1);
+                newChild->copyFromLeftInternal(childCache);
             }
-            keyI++;
 
-            // 挿入
-            keys[keyI] = key;
-            values[keyI] = value;
-            size++;
+        }
+        // 2回目以降
+        else {
 
-            // 書き込み終了
+            // newChildを更新
+            newChild->copyFromLeft(childCache);
+
+        }
+
+        // 自身とchildをlatch
+        // 失敗したら再実行
+        if (!attemptLatch(infoCache)) continue;
+        if (!childCache->attemptLatch(childInfoCache)) {
             unlatch();
-            return true;
-
-        } else {
-
-            // keyが満たすインデックスを探す
-            keyI = size - 1;
-            // size==MAX_DEG は再実行
-            if (keyI == MAX_DEG-1) continue;
-            while (keyI >= 0 && key < keys[keyI]) {
-                keyI--;
-            }
-            keyI++;
-
-            // keyが満たすchild
-            node1 = children[keyI];
-            oldInfo1 = turnOffLSB(node1->info);
-
-            if (node1->size == MAX_DEG) {
-
-                // newChildを準備
-                if (node2 == nullptr) {
-                    node2 = new Node(node1->isLeaf, MIN_DEG-1);
-                }
-                node2->copyFromLeft(node1);
-
-                // 自身とchildをlatch。失敗したら再実行
-                if (!attemptLatch(oldInfo)) continue;
-                if (!node1->attemptLatch(oldInfo1)) {
-                    unlatch();
-                    continue;
-                }
-
-                // childの更新
-                if (node1->isLeaf) {
-                    node1->size = MIN_DEG;
-                    node1->highKey = node1->keys[MIN_DEG];
-                } else {
-                    node1->size = MIN_DEG-1;
-                    node1->highKey = node1->keys[MIN_DEG-1];
-                }
-                node1->next = node2;
-
-                // childの書き込み終了
-                node1->unlatch();
-
-                // 自身の更新
-                for (int i = size; i >= keyI+1; i--) {
-                    keys[i] = keys[i-1];
-                    children[i+1] = children[i];
-                }
-                keys[keyI] = node1->highKey;
-                children[keyI+1] = node2;
-                size++;
-
-                // 書き込み終了
-                unlatch();
-
-                // 子へ
-                return node1->insert(key, value, this);
-
-            } else if (info == oldInfo && node1->info == oldInfo1) {
-
-                // 子へ
-                return node1->insert(key, value, this);
-
-            }
+            continue;
         }
+
+        // childの更新
+        if (childCache->isLeaf) {
+            childCache->size = MIN_DEG;
+            childCache->highKey = childCache->keys[MIN_DEG];
+        } else {
+            childCache->size = MIN_DEG-1;
+            childCache->highKey = childCache->keys[MIN_DEG-1];
+        }
+        childCache->next = newChild;
+        childCache->unlatch();
+
+        // 自身の更新
+        for (int i = sizeCache; i >= keyI+1; i--) {
+            keys[i] = keys[i-1];
+            children[i+1] = children[i];
+        }
+        keys[keyI] = childCache->highKey;
+        children[keyI+1] = newChild;
+        size = sizeCache+1;
+        unlatch();
+
+        // 子へ
+        return childCache->insert(key, value, this);
+
     }
+}
+
+bool Node::insertToLeaf(Key key, Value *value, Node *parent) {
+
+    int infoCache, sizeCache;
+    int keyI;
+
+    while (true) {
+
+        // infoCache初期化（更新）
+        infoCache = turnOffLSB(info);
+
+        // highKey以上はnextへ
+        if (next != nullptr && highKey <= key) {
+            if (info != infoCache) continue;
+            return next->insertToLeaf(key, value, parent);
+        }
+
+        // sizeCache初期化（更新）
+        sizeCache = size;
+
+        // すでに分割されているべきなのでparentへ
+        if (sizeCache == MAX_DEG) {
+            if (info != infoCache) continue;
+            if (parent == nullptr) return false;
+            return parent->insertToInternal(key, value, nullptr);
+        }
+
+        // latchに失敗したら再実行
+        if (!attemptLatch(infoCache)) continue;
+
+        // 更新
+        // keyより大きいものを1つ右へ
+        for (keyI = sizeCache; keyI > 0; keyI--) {
+            if (key >= keys[keyI-1]) break;
+            keys[keyI] = keys[keyI-1];
+            values[keyI] = values[keyI-1];
+        }
+
+        // 挿入
+        keys[keyI] = key;
+        values[keyI] = value;
+        size = sizeCache+1;
+        unlatch();
+
+        return true;
+
+    }
+}
+
+bool Node::insert(Key key, Value *value, Node *parent) {
+    if (isLeaf) return insertToLeaf(key, value, parent);
+    else return insertToInternal(key, value, parent);
 }
 
 Value *Node::search(Key key) {
 
     // keyが満たすインデックスを探す
     int i = 0;
-    unsigned oldInfo = turnOffLSB(info);
+    int oldInfo = turnOffLSB(info);
     while (i < size && key < keys[i]) {
         i++;
     }
