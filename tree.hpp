@@ -1,4 +1,5 @@
 #include <atomic>
+#include <stack>
 #include "key.hpp"
 #include "value.hpp"
 
@@ -39,11 +40,11 @@ private:
     void copyFromLeft(Node *left);
     void copyFromLeftInternal(Node *left);
     void copyFromLeftLeaf(Node *left);
-    bool insertToInternal(Key key, Value *value, Node *parent);
-    bool insertToLeaf(Key key, Value *value, Node *parent);
+    bool insertToInternal(Key key, Value *value, std::stack<Node*>& parents);
+    bool insertToLeaf(Key key, Value *value, std::stack<Node*>& parents);
 public:
     Node(bool isLeaf, int size);
-    bool insert(Key key, Value *value, Node *parent);
+    bool insert(Key key, Value *value, std::stack<Node*>& parents);
     Value *search(Key key);
     void traverse(bool showKeys = true);
     bool check();

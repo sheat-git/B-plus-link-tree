@@ -25,6 +25,8 @@ void Tree::insert(Key key, Value *value) {
     Node *rootCache;
     int rootInfoCache;
 
+    std::stack<Node*> parents;
+
     // 木を深くするとき用
     Node *newRoot = nullptr, *right;
 
@@ -49,7 +51,7 @@ void Tree::insert(Key key, Value *value) {
             }
 
             // insertに成功したら終了
-            if (root->insert(key, value, nullptr)) return;
+            if (root->insert(key, value, parents)) return;
             // 失敗したら再実行
             else continue;
         }
@@ -117,7 +119,7 @@ void Tree::insert(Key key, Value *value) {
 
         // insertに成功したら終了
         // 失敗したら再実行
-        if (root->insert(key, value, nullptr)) return;
+        if (root->insert(key, value, parents)) return;
 
     }
 }
@@ -185,7 +187,7 @@ void Node::copyFromLeftLeaf(Node *left) {
     next = left->next;
 }
 
-bool Node::insertToInternal(Key key, Value *value, Node *parent) {
+bool Node::insertToInternal(Key key, Value *value, std::stack<Node*>& parents) {
 
     int infoCache;
     int sizeCache, keyI;
@@ -201,7 +203,7 @@ bool Node::insertToInternal(Key key, Value *value, Node *parent) {
         // highKey以上はnextへ
         if (next != nullptr && highKey <= key) {
             if (info != infoCache) continue;
-            return next->insertToInternal(key, value, parent);
+            return next->insertToInternal(key, value, parents);
         }
 
         // sizeCache初期化（更新）
@@ -210,8 +212,11 @@ bool Node::insertToInternal(Key key, Value *value, Node *parent) {
         // すでに分割されているべきなのでparentへ
         if (sizeCache == MAX_DEG) {
             if (info != infoCache) continue;
-            if (parent == nullptr) return false;
-            return parent->insertToInternal(key, value, nullptr);
+            if (parents.empty()) return false;
+            // 変数の再利用のためここでは名前に意味がない
+            childCache = parents.top();
+            parents.pop();
+            return childCache->insertToInternal(key, value, parents);
         }
 
         // keyを満たすインデックスkeyIを探す
@@ -226,7 +231,7 @@ bool Node::insertToInternal(Key key, Value *value, Node *parent) {
         // child->sizeがいっぱいなら次でchildを分割
         if (childCache->size != MAX_DEG) {
             if (info != infoCache || childCache->info != childInfoCache) continue;
-            return childCache->insert(key, value, this);
+            return childCache->insert(key, value, parents);
         }
 
         // ループの最初のみ
@@ -280,15 +285,17 @@ bool Node::insertToInternal(Key key, Value *value, Node *parent) {
         unlatch();
 
         // 子へ
-        return childCache->insert(key, value, this);
+        return childCache->insert(key, value, parents);
 
     }
 }
 
-bool Node::insertToLeaf(Key key, Value *value, Node *parent) {
+bool Node::insertToLeaf(Key key, Value *value, std::stack<Node*>& parents) {
 
     int infoCache, sizeCache;
     int keyI;
+
+    Node *parent;
 
     while (true) {
 
@@ -298,7 +305,7 @@ bool Node::insertToLeaf(Key key, Value *value, Node *parent) {
         // highKey以上はnextへ
         if (next != nullptr && highKey <= key) {
             if (info != infoCache) continue;
-            return next->insertToLeaf(key, value, parent);
+            return next->insertToLeaf(key, value, parents);
         }
 
         // sizeCache初期化（更新）
@@ -307,8 +314,10 @@ bool Node::insertToLeaf(Key key, Value *value, Node *parent) {
         // すでに分割されているべきなのでparentへ
         if (sizeCache == MAX_DEG) {
             if (info != infoCache) continue;
-            if (parent == nullptr) return false;
-            return parent->insertToInternal(key, value, nullptr);
+            if (parents.empty()) return false;
+            parent = parents.top();
+            parents.pop();
+            return parent->insertToInternal(key, value, parents);
         }
 
         // latchに失敗したら再実行
@@ -333,9 +342,9 @@ bool Node::insertToLeaf(Key key, Value *value, Node *parent) {
     }
 }
 
-bool Node::insert(Key key, Value *value, Node *parent) {
-    if (isLeaf) return insertToLeaf(key, value, parent);
-    else return insertToInternal(key, value, parent);
+bool Node::insert(Key key, Value *value, std::stack<Node*>& parents) {
+    if (isLeaf) return insertToLeaf(key, value, parents);
+    else return insertToInternal(key, value, parents);
 }
 
 Value *Node::search(Key key) {
