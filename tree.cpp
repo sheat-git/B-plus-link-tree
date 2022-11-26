@@ -49,7 +49,7 @@ void Tree::insert(Key key, Value *value) {
             }
 
             // insertに成功したら終了
-            if (root->insert(key, value, nullptr)) return;
+            if (root->insert(key, value)) return;
             // 失敗したら再実行
             else continue;
         }
@@ -117,7 +117,7 @@ void Tree::insert(Key key, Value *value) {
 
         // insertに成功したら終了
         // 失敗したら再実行
-        if (root->insert(key, value, nullptr)) return;
+        if (root->insert(key, value)) return;
 
     }
 }
@@ -185,7 +185,7 @@ void Node::copyFromLeftLeaf(Node *left) {
     next = left->next;
 }
 
-bool Node::insertToInternal(Key key, Value *value, Node *parent) {
+bool Node::insertToInternal(Key key, Value *value) {
 
     int infoCache;
     int sizeCache, keyI;
@@ -201,17 +201,16 @@ bool Node::insertToInternal(Key key, Value *value, Node *parent) {
         // highKey以上はnextへ
         if (next != nullptr && highKey <= key) {
             if (info != infoCache) continue;
-            return next->insertToInternal(key, value, parent);
+            return next->insertToInternal(key, value);
         }
 
         // sizeCache初期化（更新）
         sizeCache = size;
 
-        // すでに分割されているべきなのでparentへ
+        // すでに分割されているべきなので誤り
         if (sizeCache == MAX_DEG) {
             if (info != infoCache) continue;
-            if (parent == nullptr) return false;
-            return parent->insertToInternal(key, value, nullptr);
+            return false;
         }
 
         // keyを満たすインデックスkeyIを探す
@@ -226,7 +225,7 @@ bool Node::insertToInternal(Key key, Value *value, Node *parent) {
         // child->sizeがいっぱいなら次でchildを分割
         if (childCache->size != MAX_DEG) {
             if (info != infoCache || childCache->info != childInfoCache) continue;
-            return childCache->insert(key, value, this);
+            return childCache->insert(key, value);
         }
 
         // ループの最初のみ
@@ -280,12 +279,12 @@ bool Node::insertToInternal(Key key, Value *value, Node *parent) {
         unlatch();
 
         // 子へ
-        return childCache->insert(key, value, this);
+        return childCache->insert(key, value);
 
     }
 }
 
-bool Node::insertToLeaf(Key key, Value *value, Node *parent) {
+bool Node::insertToLeaf(Key key, Value *value) {
 
     int infoCache, sizeCache;
     int keyI;
@@ -298,17 +297,16 @@ bool Node::insertToLeaf(Key key, Value *value, Node *parent) {
         // highKey以上はnextへ
         if (next != nullptr && highKey <= key) {
             if (info != infoCache) continue;
-            return next->insertToLeaf(key, value, parent);
+            return next->insertToLeaf(key, value);
         }
 
         // sizeCache初期化（更新）
         sizeCache = size;
 
-        // すでに分割されているべきなのでparentへ
+        // すでに分割されているべきなので誤り
         if (sizeCache == MAX_DEG) {
             if (info != infoCache) continue;
-            if (parent == nullptr) return false;
-            return parent->insertToInternal(key, value, nullptr);
+            return false;
         }
 
         // latchに失敗したら再実行
@@ -333,9 +331,9 @@ bool Node::insertToLeaf(Key key, Value *value, Node *parent) {
     }
 }
 
-bool Node::insert(Key key, Value *value, Node *parent) {
-    if (isLeaf) return insertToLeaf(key, value, parent);
-    else return insertToInternal(key, value, parent);
+bool Node::insert(Key key, Value *value) {
+    if (isLeaf) return insertToLeaf(key, value);
+    else return insertToInternal(key, value);
 }
 
 Value *Node::search(Key key) {
