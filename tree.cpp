@@ -126,8 +126,8 @@ Value *Tree::search(Key key) {
     return root->search(key);
 }
 
-bool Tree::check() {
-    return root->check();
+bool Tree::check(int increaseBy) {
+    return root->check(increaseBy);
 }
 
 Node::Node(bool isLeaf, int size): isLeaf(isLeaf) {
@@ -342,33 +342,40 @@ bool Node::insert(Key key, Value *value) {
 
 Value *Node::search(Key key) {
 
-    // keyが満たすインデックスを探す
-    int i = 0;
-    int oldInfo = turnOffLSB(info);
-    while (i < size && key < keys[i]) {
-        i++;
-    }
+    int infoCache, sizeCache;
+    int keyI;
 
-    // 最後まで来た時かつhighKey以上の時はnextのNodeでsearch
-    // nextがnullptrのときは最も右のノードであり、highKeyが初期化されていないためチェック
-    if (i >= size && next != nullptr && highKey <= key) {
-        return next->search(key);
-    }
-    i--;
+    while (true) {
 
-    if (isLeaf) {
-        if (info == oldInfo) return values[i];
-        return search(key);
-    } else {
-        if (info == oldInfo) return children[i]->search(key);
-        return search(key);
+        // infoCacheの初期化（更新）
+        infoCache = turnOffLSB(info);
+
+        // highKey以上はnextへ
+        if (next != nullptr && highKey <= key) {
+            if (info != infoCache) continue;
+            return next->search(key);
+        }
+
+        // sizeCacheの初期化（更新）
+        sizeCache = size;
+
+        // keyを満たすインデックスkeyIを探す
+        for (keyI=0; keyI<sizeCache; keyI++) {
+            if (key < keys[keyI]) break;
+        }
+
+        if (isLeaf) {
+            if (info == infoCache) return values[keyI];
+        } else {
+            if (info == infoCache) return children[keyI]->search(key);
+        }
     }
 }
 
 void Node::traverse(bool showKeys) {
     if (isLeaf) {
         for (int i=0; i<size; i++) {
-            if (i==size-1) {
+            if (i==size-1 && next == nullptr) {
                 showKeys ? std::cout << keys[i] << "\n" : std::cout << values[i] << "\n";
             } else {
                 showKeys ? std::cout << keys[i] << " " : std::cout << values[i] << " ";
@@ -381,11 +388,11 @@ void Node::traverse(bool showKeys) {
     }
 }
 
-bool Node::check() {
+bool Node::check(int increaseBy) {
     if (!isLeaf) {
         // 再帰的に
         for (int i=0; i<size+1; i++) {
-            if (!children[i]->check()) return false;
+            if (!children[i]->check(increaseBy)) return false;
         }
         // nextが正しいか
         for (int i=0; i<size; i++) {
@@ -399,7 +406,10 @@ bool Node::check() {
     }
     // keysの並びは正しいか
     for (int i=0; i<size-1; i++) {
-        if (keys[i] >= keys[i+1]) return false;
+        if (isLeaf && increaseBy != 0) {
+            if (keys[i+1] - keys[i] != increaseBy) return false;
+        }
+        else if (keys[i] >= keys[i+1]) return false;
     }
     return true;
 }
