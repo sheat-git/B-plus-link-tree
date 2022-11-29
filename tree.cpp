@@ -1,7 +1,7 @@
 #include <iostream>
 #include "tree.hpp"
 
-#define MIN_DEG 3
+#define MIN_DEG 30
 #define MAX_DEG 2*MIN_DEG-1
 
 int turnOnLSB(int info) {
