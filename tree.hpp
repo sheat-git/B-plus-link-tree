@@ -14,7 +14,7 @@ public:
     void traverse(bool showKeys);
     void insert(Key key, Value *value);
     Value *search(Key key);
-    bool check(int increaseBy = 0);
+    bool check(Key increaseBy = 0);
 };
 
 class Node {
@@ -46,7 +46,7 @@ public:
     bool insert(Key key, Value *value);
     Value *search(Key key);
     void traverse(bool showKeys = true);
-    bool check(int increaseBy = 0);
+    bool check(Key increaseBy = 0);
 
 friend class Tree;
 };
