@@ -82,7 +82,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    for (int i=0; i<10; i++) {
+    for (int i=0; i<100; i++) {
         std::cout << i << "... ";
         time = bench(threadCount, dataCount, false);
         if (time == -1) {
@@ -92,6 +92,6 @@ int main(int argc, char *argv[]) {
         std::cout << "success\n";
         times += time;
     }
-    std::cout << "Avg. " << times / 10 << "msec\n";
+    std::cout << "Avg. " << (double) times / 100 << "msec\n";
     return 0;
 }
